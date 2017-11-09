@@ -1,8 +1,8 @@
 /*
  * Code to start Socket Programming in ICEN/ICSI 416
- * Instructor: Prof. Dola Saha
+ * Author : Jingyuan Yi 
  *
- * udp_server.c - A simple UDP server, does not send echo
+ * udp_server.c - A simple UDP server, sending TCP header(a binary header in tcp formation in accuracy),does not send echo
  *
  * Compile in itsunix: gcc -lsocket -lm -lnsl udp_server_no_echo.c -o udp_server
  *
