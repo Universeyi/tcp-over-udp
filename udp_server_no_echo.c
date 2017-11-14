@@ -133,6 +133,64 @@ void decode_tcp_header(char *buf,TCP_hearder *header,char *data) // decode the t
   //printf("%s\n",data);
 }
 
+long long unsigned int dec2bin(int dec) //convert dec to bin ,using llu to avoid overflow
+{
+    if (dec == 0)
+    {
+        return 0;
+    }
+    else
+    {
+        return (dec % 2 + 10 * dec2bin(dec / 2));
+    }
+}
+
+void tobinstr(long long unsigned int value, int bitsCount, char* output) //bin integer to string formation
+{
+    int i;
+    output[bitsCount] = '\0';
+    for (i = bitsCount - 1; i >= 0; --i)
+    {
+        output[i] = (value % 10) + '0';
+        value /= 10;
+    }
+}
+
+void get_tcp_header_string(TCP_hearder *header,char *head_string)  //transform TCP_hearder to bin string
+{
+    char *temp=(char *)malloc(sizeof(char)*32+1);
+
+    tobinstr(dec2bin(header->src_port),16,temp);
+    strcat(head_string,temp);
+
+    tobinstr(dec2bin(header->dest_port),16,temp);
+    strcat(head_string,temp);
+
+    tobinstr(dec2bin(header->seq_no),32,temp);
+    strcat(head_string,temp);
+
+    tobinstr(dec2bin(header->ack_no),32,temp);
+    strcat(head_string,temp);
+
+    tobinstr(dec2bin(header->check),16,temp);
+    strcat(head_string,temp);
+
+    tobinstr(dec2bin(header->urg_ptr),16,temp);
+    strcat(head_string,temp);
+
+    tobinstr(dec2bin(header->SYN),6,temp);
+    strcat(head_string,temp);
+
+    tobinstr(dec2bin(header->FIN),6,temp);
+    strcat(head_string,temp);
+
+    tobinstr(dec2bin(header->ACK),6,temp);
+    strcat(head_string,temp);
+
+    free(temp);
+}
+
+
 
 int main(int argc, char **argv) {
   int sockfd; /* socket */
@@ -147,6 +205,7 @@ int main(int argc, char **argv) {
   int n; /* message byte size */
   TCP_hearder *myhdr = (TCP_hearder *)malloc(sizeof(myhdr)); /* TCP_hearder struct variable */
   char data[DATASIZE]=""; /* store attached datastring */
+  char *headstr=(char *)malloc(sizeof(char)*128+1);
 
   /*
    * check command line arguments
@@ -217,7 +276,6 @@ int main(int argc, char **argv) {
 	   hostp->h_name, hostaddrp);
     printf("server received %d/%d bytes: %s\n", strlen(buf), n, buf);
 
-
     /* decode buf into header and data */
     decode_tcp_header(buf,myhdr,data);
 
@@ -227,14 +285,61 @@ int main(int argc, char **argv) {
     /* print attached data */
     printf("data = %s\n",data);
 
+    /* judge head type */
+    if(myhdr->SYN && myhdr->FIN)
+    error("SYN and FIN cannot be 1 at the same time!");
+
+    if (myhdr->SYN) // 1st shake
+    {
+      TCP_hearder *ack_hdr = (TCP_hearder *)malloc(sizeof(ack_hdr));
+      ack_hdr->dest_port = myhdr->src_port;
+      ack_hdr->src_port = myhdr->dest_port;
+      ack_hdr->check = 3;
+      ack_hdr->ack_no = myhdr->seq_no + 1;
+      ack_hdr->seq_no = 2000;
+      ack_hdr->urg_ptr=2;
+      ack_hdr->SYN = 1;
+      ack_hdr->FIN=0;
+      ack_hdr->ACK=1;
+      printf("received 1st shake, sending 2nd shake.\n");
+
+      /* sending 2nd handshake */
+      get_tcp_header_string(ack_hdr, headstr);
+      memcpy(buf,headstr,strlen(headstr));
+      printf("flag1\n");
+      memcpy(data,"2nd shake from server\n",strlen("2nd shake from server\n"));
+      printf("flag2\n");
+      memcpy(buf+strlen(headstr),data,strlen(data));
+      printf("flag3\n");
+
+      n = sendto(sockfd, buf, strlen(buf), 0,
+  	       (struct sockaddr *) &clientaddr, clientlen);
+      if (n < 0)
+        error("ERROR in sendto");
+      printf("2nd handshake sent\n");
+
+      /* echo the 3rd handshake */
+      bzero(buf, BUFSIZE);
+      n = recvfrom(sockfd, buf, BUFSIZE, 0,
+  		 (struct sockaddr *) &clientaddr, &clientlen);
+      if (n < 0)
+        error("ERROR in recvfrom");
+
+        n = sendto(sockfd, buf, strlen(buf), 0,
+    	       (struct sockaddr *) &clientaddr, clientlen);
+        if (n < 0)
+          error("ERROR in sendto");
+
+    }
+
     /*
      * sendto: echo the input back to the client
      */
-     /*
-    n = sendto(sockfd, buf, strlen(buf), 0,
-	       (struct sockaddr *) &clientaddr, clientlen);
-    if (n < 0)
-      error("ERROR in sendto");
-      */
+
+    // n = sendto(sockfd, buf, strlen(buf), 0,
+	  //      (struct sockaddr *) &clientaddr, clientlen);
+    // if (n < 0)
+    //   error("ERROR in sendto");
+
   }
 }
