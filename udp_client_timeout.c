@@ -22,7 +22,7 @@
 #include <errno.h>
 #include <stdint.h>
 #define BUFSIZE 1024
-#define DATASIZE 895
+#define DATASIZE 877
 #define WAIT_TIME 5 // In seconds
 
 /*
@@ -49,6 +49,9 @@ typedef struct{
     int ack_no;
     int check;
     int urg_ptr;
+    int SYN;
+    int FIN;
+    int ACK;
 }TCP_hearder;
 
 long long unsigned int dec2bin(int dec) //convert dec to bin ,using llu to avoid overflow
@@ -96,6 +99,15 @@ void get_tcp_header_string(TCP_hearder *header,char *head_string)  //transform T
     tobinstr(dec2bin(header->urg_ptr),16,temp);
     strcat(head_string,temp);
 
+    tobinstr(dec2bin(header->SYN),6,temp);
+    strcat(head_string,temp);
+
+    tobinstr(dec2bin(header->FIN),6,temp);
+    strcat(head_string,temp);
+
+    tobinstr(dec2bin(header->ACK),6,temp);
+    strcat(head_string,temp);
+
     free(temp);
 }
 
@@ -108,6 +120,9 @@ void print_header(TCP_hearder * header)  //print the TCP header information (usi
   printf( "ack_no = %d \n", header->ack_no);
   printf( "check = %d \n", header->check);
   printf( "urg_ptr = %d \n", header->urg_ptr);
+  printf( "SYN = %d \n", header->SYN);
+  printf( "FIN = %d \n", header->FIN);
+  printf( "ACK = %d \n", header->ACK);
   printf("-----------------END-----------------\n");
 }
 
@@ -119,7 +134,7 @@ int main(int argc, char **argv) {
     struct sockaddr_in serveraddr;
     struct hostent *server;
     char *hostname;
-    char data[DATASIZE]= "test data...\n";
+    char data[DATASIZE]= "hotpot";
     char buf[BUFSIZE];
     char *headstr=(char *)malloc(sizeof(char)*128+1);
 
@@ -165,6 +180,9 @@ int main(int argc, char **argv) {
     myhdr->seq_no=1000;
     myhdr->src_port=2334;
     myhdr->urg_ptr=2;
+    myhdr->SYN = 1;
+    myhdr->FIN=1;
+    myhdr->ACK=1;
 
     /* print the header information (at client side)*/
     print_header(myhdr);
@@ -172,6 +190,7 @@ int main(int argc, char **argv) {
 
     /* transform header into binary string */
     get_tcp_header_string(myhdr, headstr);
+
 
     /* attach data to string */
     printf("header length = %d\n", strlen(headstr));

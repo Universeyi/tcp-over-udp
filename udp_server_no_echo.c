@@ -1,6 +1,6 @@
 /*
  * Code to start Socket Programming in ICEN/ICSI 416
- * Author : Jingyuan Yi 
+ * Author : Jingyuan Yi
  *
  * udp_server.c - A simple UDP server, sending TCP header(a binary header in tcp formation in accuracy),does not send echo
  *
@@ -22,7 +22,7 @@
 #include <math.h>
 
 #define BUFSIZE 1024
-#define DATASIZE 895
+#define DATASIZE 877
 
 /*
  * error - wrapper for perror
@@ -39,6 +39,9 @@ typedef struct{
     int ack_no;
     int check;
     int urg_ptr;
+    int SYN;
+    int FIN;
+    int ACK;
 }TCP_hearder;
 
 
@@ -51,6 +54,9 @@ void print_header(TCP_hearder * header)  //print the TCP header information (usi
   printf( "ack_no = %d \n", header->ack_no);
   printf( "check = %d \n", header->check);
   printf( "urg_ptr = %d \n", header->urg_ptr);
+  printf( "SYN = %d \n", header->SYN);
+  printf( "FIN = %d \n", header->FIN);
+  printf( "ACK = %d \n", header->ACK);
   printf("-----------------END-----------------\n");
 }
 
@@ -100,6 +106,29 @@ void decode_tcp_header(char *buf,TCP_hearder *header,char *data) // decode the t
   }
   header->urg_ptr = var;
 
+  var = 0;
+  for(j=0;i<16+16+32+32+16+16+6;i++,j++)
+  {
+    var+=(int)(buf[i]-'0')*pow(2,6-j-1);
+  }
+  header->SYN = var;
+
+  var = 0;
+  for(j=0;i<16+16+32+32+16+16+6+6;i++,j++)
+  {
+    var+=(int)(buf[i]-'0')*pow(2,6-j-1);
+  }
+  header->FIN = var;
+
+  var = 0;
+  for(j=0;i<16+16+32+32+16+16+6+6+6;i++,j++)
+  {
+    var+=(int)(buf[i]-'0')*pow(2,6-j-1);
+  }
+  header->ACK = var;
+
+  // printf("i should be 146, now is = %d\n",i);
+  // printf("data by pointer -> %s\n",buf+i);
   memcpy(data,buf+i,strlen(buf+i));
   //printf("%s\n",data);
 }
@@ -117,7 +146,7 @@ int main(int argc, char **argv) {
   int optval; /* flag value for setsockopt */
   int n; /* message byte size */
   TCP_hearder *myhdr = (TCP_hearder *)malloc(sizeof(myhdr)); /* TCP_hearder struct variable */
-  char data[DATASIZE]; /* store attached datastring */
+  char data[DATASIZE]=""; /* store attached datastring */
 
   /*
    * check command line arguments
