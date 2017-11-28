@@ -2,7 +2,7 @@
  * Code to start Socket Programming in ICEN/ICSI 416
  * Author : Jingyuan Yi
  *
- * udp_server.c - A simple UDP server, sending TCP header(a binary header in tcp formation in accuracy),does not send echo
+ * udp_server.c - A simple TCP-over-UDP server, sending handshake echo and store text into as disk files.
  *
  * Compile in itsunix: gcc -lsocket -lm -lnsl udp_server_no_echo.c -o udp_server
  *
@@ -127,10 +127,9 @@ void decode_tcp_header(char *buf,TCP_hearder *header,char *data) // decode the t
   }
   header->ACK = var;
 
-  // printf("i should be 146, now is = %d\n",i);
-  // printf("data by pointer -> %s\n",buf+i);
+
   memcpy(data,buf+i,strlen(buf+i));
-  //printf("%s\n",data);
+
 }
 
 long long unsigned int dec2bin(int dec) //convert dec to bin ,using llu to avoid overflow
@@ -206,15 +205,22 @@ int main(int argc, char **argv) {
   TCP_hearder *myhdr = (TCP_hearder *)malloc(sizeof(myhdr)); /* TCP_hearder struct variable */
   char data[DATASIZE]=""; /* store attached datastring */
   char *headstr=(char *)malloc(sizeof(char)*128+1);
+  char *filename;
+  FILE *fp;
 
   /*
    * check command line arguments
    */
-  if (argc != 2) {
-    fprintf(stderr, "usage: %s <port>\n", argv[0]);
+  if (argc != 3) {
+    fprintf(stderr, "usage: %s <port> <filename>\n", argv[0]);
     exit(1);
   }
   portno = atoi(argv[1]);
+  filename = argv[2];
+
+  if((fp=fopen(filename,"a"))==NULL){
+      error("ERROR opening file");
+  }
 
   /*
    * socket: create the parent socket
@@ -252,38 +258,36 @@ int main(int argc, char **argv) {
    */
   clientlen = sizeof(clientaddr);
   while (1) {
-
     /*
      * recvfrom: receive a UDP datagram from a client
      */
     bzero(buf, BUFSIZE);
+    bzero(data, DATASIZE);
     n = recvfrom(sockfd, buf, BUFSIZE, 0,
 		 (struct sockaddr *) &clientaddr, &clientlen);
     if (n < 0)
       error("ERROR in recvfrom");
-
     /*
      * gethostbyaddr: determine who sent the datagram
      */
     hostp = gethostbyaddr((const char *)&clientaddr.sin_addr.s_addr,
 			  sizeof(clientaddr.sin_addr.s_addr), AF_INET);
+
     if (hostp == NULL)
       error("ERROR on gethostbyaddr");
     hostaddrp = inet_ntoa(clientaddr.sin_addr);
     if (hostaddrp == NULL)
       error("ERROR on inet_ntoa\n");
-    printf("server received datagram from %s (%s)\n",
-	   hostp->h_name, hostaddrp);
-    printf("server received %d/%d bytes: %s\n", strlen(buf), n, buf);
+
+
 
     /* decode buf into header and data */
     decode_tcp_header(buf,myhdr,data);
 
     /* print header value */
+    printf("start a new connection, header below\n");
     print_header(myhdr);
 
-    /* print attached data */
-    printf("data = %s\n",data);
 
     /* judge head type */
     if(myhdr->SYN && myhdr->FIN)
@@ -304,13 +308,14 @@ int main(int argc, char **argv) {
       printf("received 1st shake, sending 2nd shake.\n");
 
       /* sending 2nd handshake */
+      printf("\n\nsending 2nd handshake, header below\n");
+      print_header(ack_hdr);
       get_tcp_header_string(ack_hdr, headstr);
       memcpy(buf,headstr,strlen(headstr));
-      printf("flag1\n");
-      memcpy(data,"2nd shake from server\n",strlen("2nd shake from server\n"));
-      printf("flag2\n");
+
+      memcpy(data,"2nd shake\n",strlen("2nd shake\n"));
+
       memcpy(buf+strlen(headstr),data,strlen(data));
-      printf("flag3\n");
 
       n = sendto(sockfd, buf, strlen(buf), 0,
   	       (struct sockaddr *) &clientaddr, clientlen);
@@ -318,28 +323,54 @@ int main(int argc, char **argv) {
         error("ERROR in sendto");
       printf("2nd handshake sent\n");
 
-      /* echo the 3rd handshake */
+      /* wait for the 3rd handshake from client*/
       bzero(buf, BUFSIZE);
       n = recvfrom(sockfd, buf, BUFSIZE, 0,
   		 (struct sockaddr *) &clientaddr, &clientlen);
       if (n < 0)
         error("ERROR in recvfrom");
-
-        n = sendto(sockfd, buf, strlen(buf), 0,
-    	       (struct sockaddr *) &clientaddr, clientlen);
-        if (n < 0)
-          error("ERROR in sendto");
+      decode_tcp_header(buf,myhdr,data);
+      printf("\nreceiving echo from 3rd handshake, header blow\n\n");
+      print_header(myhdr);
+      printf("Connection built on server side, start to receive files\n");
 
     }
+    while(1) // data(file) transmition
+    {
 
-    /*
-     * sendto: echo the input back to the client
-     */
+      bzero(buf,BUFSIZE);
+      bzero(data,DATASIZE);
 
-    // n = sendto(sockfd, buf, strlen(buf), 0,
-	  //      (struct sockaddr *) &clientaddr, clientlen);
-    // if (n < 0)
-    //   error("ERROR in sendto");
+      n = recvfrom(sockfd, buf, BUFSIZE, 0,
+       (struct sockaddr *) &clientaddr, &clientlen);
+      if (n < 0)
+        error("ERROR in recvfrom");
+
+      decode_tcp_header(buf,myhdr,data);
+      printf("\n\ntransmission header\n");
+      print_header(myhdr);
+      printf("decoded data = %s\n", data);
+      if(strcmp(data,"$")==0)
+              {
+                n = sendto(sockfd, buf, strlen(buf), 0,
+                     (struct sockaddr *) &clientaddr, clientlen);
+                if (n < 0)
+                  error("ERROR in sendto");
+
+                  fclose(fp);
+                  break; //jump out of the loop
+              }
+      /*
+       * write message line into file:
+       */
+      if(!fputs(data,fp))
+          {
+              error("ERRO writing into files");
+          }
+    }
+    printf("Finished\n");
+
+    break;
 
   }
 }

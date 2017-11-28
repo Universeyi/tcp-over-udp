@@ -2,8 +2,8 @@
  * Code to start Socket Programming in ICEN/ICSI 416
  * Author: Jingyuan Yi
  *
- * udp_client.c - A simple UDP client, transmits a test message
- * and waits for 5 seconds for response.
+ * udp_client.c - A simple TCP-over-UDP client, handshakes with server and transmits files (all with attached header)
+ *
  *
  * Compile in itsunix: gcc -lsocket -lm -lnsl udp_client_timeout.c -o udp_client
  *
@@ -195,10 +195,9 @@ void decode_tcp_header(char *buf,TCP_hearder *header,char *data) // decode the t
   }
   header->ACK = var;
 
-  // printf("i should be 146, now is = %d\n",i);
-  // printf("data by pointer -> %s\n",buf+i);
+
   memcpy(data,buf+i,strlen(buf+i));
-  //printf("%s\n",data);
+
 }
 
 
@@ -214,16 +213,24 @@ int main(int argc, char **argv) {
     char data[DATASIZE]= "";
     char buf[BUFSIZE];
     char *headstr=(char *)malloc(sizeof(char)*128+1);
+    char *filename;
+    FILE *fp;
 
 	signal(SIGALRM, sig_alrm);
 
     /* check command line arguments */
-    if (argc != 3) {
-       fprintf(stderr,"usage: %s <hostname> <port>\n", argv[0]);
+    if (argc != 4) {
+       fprintf(stderr,"usage: %s <hostname> <port> <filename>\n", argv[0]);
        exit(0);
     }
     hostname = argv[1];
     portno = atoi(argv[2]);
+    filename = argv[3];
+
+    /* check the file */
+    if((fp=fopen(filename,"r"))==NULL){
+        error("ERROR opening file");
+    }
 
     /* socket: create the socket */
     sockfd = socket(AF_INET, SOCK_DGRAM, 0);
@@ -299,11 +306,12 @@ int main(int argc, char **argv) {
     }
     else {
     	alarm(0);
-	    //printf("Echo from server: %s", buf);
+
       TCP_hearder *ack_hdr = (TCP_hearder *)malloc(sizeof(ack_hdr));
       decode_tcp_header(buf,ack_hdr,data);
+      printf("\n\nget 2nd handshake info from server,header below\n");
+      print_header(ack_hdr);
       /*get 2nd handshake info from server*/
-      printf("getting info from server, data attached = %s\n",data);
 
       /* send 3nd handshake to server*/
       myhdr->ACK = 1;
@@ -315,25 +323,53 @@ int main(int argc, char **argv) {
       memcpy(buf,headstr,strlen(headstr));
       memcpy(buf+strlen(headstr),data,strlen(data));
 
-      printf("start sending 3rd handshake...\n");
+      printf("\n\nstart sending 3rd handshake, header below\n");
+      print_header(myhdr);
       n = sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&serveraddr, serverlen);
       if (n < 0)
         error("ERROR in 3rd sendto");
-      alarm(WAIT_TIME);
+      printf("client side established 3-handshake connection\n");
+      /*
+         * start to loop to read line from disk file
+         * and send it to target tcp server
+         */
+         myhdr->ACK = 0;
+         myhdr->SYN = 0;
+        while(!feof(fp)){
+            bzero(buf, BUFSIZE);
+            bzero(data, DATASIZE);
+            bzero(headstr,sizeof(char)*128+1);
+            /* get string from file by line */
+            fgets(data,DATASIZE,fp);
+            printf("data from file is : %s\n", data);
+            get_tcp_header_string(myhdr, headstr);
+            memcpy(buf,headstr,strlen(headstr));
+            memcpy(buf+strlen(headstr),data,strlen(data));
+            printf("\n\ntransmission header below\n");
+            print_header(myhdr);
+            n = sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&serveraddr, serverlen);
+            if (n < 0)
+              error("ERROR in sending files");
+        }
+        fclose(fp);
 
-      n = recvfrom(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&serveraddr, &serverlen);
-      if (n < 0)
-      {
-        	if (errno == EINTR)
-            	fprintf(stderr, "Socket timeout\n");
-        	else
-            	error("recvfrom() error\n");
-      }
-      else {
-      	alarm(0);
-        printf("3-handshake connection ,client side established\n");
-      }
+        /* write end symbol "$" to server */
+        bzero(buf, BUFSIZE);
+        bzero(headstr,sizeof(char)*128+1);
+        myhdr->FIN =1; //setting finish bit
+        get_tcp_header_string(myhdr, headstr);
+        memcpy(buf,headstr,strlen(headstr));
+        memcpy(buf+strlen(headstr),"$",strlen("$"));
+
+        printf("\n\nserver end signal sent, header below\n");
+        print_header(myhdr);
+        n = sendto(sockfd, buf, strlen(buf), 0, (struct sockaddr*)&serveraddr, serverlen);
+        if (n < 0)
+          error("ERROR in sending files");
 	}
+
+
+
 
     return 0;
 }
